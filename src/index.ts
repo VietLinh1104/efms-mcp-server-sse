@@ -8,11 +8,13 @@ import { registerAllTools } from "./tools/index.js";
 import type { McpContext } from "./tools/efms.js";
 import axios from "axios";
 import dotenv from "dotenv";
+import cors from "cors";
 
 dotenv.config();
 
 const app = express();
-const port = process.env.PORT || 3000;
+app.use(cors());
+app.use(express.json());
 
 // Metadata OAuth cho MCP Client
 app.get("/.well-known/oauth-authorization-server", (req, res) => {
@@ -34,6 +36,7 @@ app.get("/.well-known/oauth-authorization-server", (req, res) => {
 const transports = new Map<string, SSEServerTransport>();
 
 app.get("/sse", async (req, res) => {
+  console.error("[SSE] New connection attempt");
   const authHeader = req.headers.authorization;
 
   if (!authHeader?.startsWith("Bearer ")) {
@@ -94,6 +97,7 @@ app.post("/messages", async (req, res) => {
   await transport.handlePostMessage(req, res);
 });
 
+const port = process.env.PORT || 3000;
 app.listen(port, () => {
-  console.log(`EFMS MCP Server (HTTP/SSE) running on port ${port}`);
+  console.error(`EFMS MCP Server (HTTP/SSE) running on port ${port}`);
 });
