@@ -93,6 +93,14 @@ const sseHandler = async (req: any, res: any) => {
 
     // Sử dụng URL tuyệt đối để Claude luôn gửi đúng chỗ
     const transport = new SSEServerTransport(fullMessagesUrl as any, res);
+
+    // Monkey-patch để log dữ liệu SSE gửi đi
+    const originalWrite = res.write.bind(res);
+    res.write = (chunk: any, ...args: any[]) => {
+      console.error(`[SSE] 📤 Sending: ${chunk?.toString?.()?.slice(0, 500)}`);
+      return originalWrite(chunk, ...args);
+    };
+
     const sessionId = transport.sessionId;
     transports.set(sessionId, transport);
 
