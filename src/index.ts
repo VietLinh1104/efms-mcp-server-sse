@@ -43,9 +43,9 @@ const sseHandler = async (req: any, res: any) => {
 
   if (!authHeader || !authHeader.startsWith("Bearer ")) {
     console.error(`[SSE] ❌ Reject request thiếu token tại: ${req.path}`);
-    return res.status(401).json({ 
-      error: "Unauthorized", 
-      message: "Vui lòng kết nối qua Claude và thực hiện xác thực OAuth." 
+    return res.status(401).json({
+      error: "Unauthorized",
+      message: "Vui lòng kết nối qua Claude và thực hiện xác thực OAuth."
     });
   }
 
@@ -59,18 +59,30 @@ const sseHandler = async (req: any, res: any) => {
       headers: { Authorization: `Bearer ${token}` }
     });
 
-    console.error("[SSE] ✅ Xác thực thành công");
+    console.error(`[SSE] 👤 Identity Response: ${JSON.stringify(identityRes.data)}`);
     const user = identityRes.data.data;
+
+    if (!user || !user.companyId) {
+      console.error("[SSE] ❌ Lỗi: Không tìm thấy thông tin user hoặc companyId");
+      return res.status(400).json({ error: "Missing user info or companyId" });
+    }
 
     const server = new McpServer({
       name: "efms-mcp-server",
       version: "1.0.0",
     });
 
-    registerAllTools(server, {
-      token,
-      companyId: user.companyId
-    });
+    console.error("[SSE] 🔧 Đang register tools...");
+    try {
+      registerAllTools(server, {
+        token,
+        companyId: user.companyId
+      });
+      console.error("[SSE] ✅ Register tools thành công");
+    } catch (toolError: any) {
+      console.error(`[SSE] ❌ Lỗi register tools: ${toolError.stack}`);
+      return res.status(500).json({ error: "Tool registration failed" });
+    }
 
     // Xác định URL tuyệt đối cho messages endpoint
     const protocol = req.headers["x-forwarded-proto"] || req.protocol;
@@ -107,20 +119,21 @@ app.get("/mcp", sseHandler);
 
 app.post("/messages", async (req, res) => {
   const sessionId = req.query.sessionId as string;
-  console.error(`[POST] 📩 Nhận message cho session: ${sessionId}`);
+  console.error(`[POST] 📩 Session: ${sessionId}`);
+  console.error(`[POST] 📦 Body: ${JSON.stringify(req.body)}`);
 
   const transport = transports.get(sessionId);
 
   if (!transport) {
-    console.error(`[POST] ❌ Không tìm thấy session: ${sessionId}. Hiện có các session: ${Array.from(transports.keys()).join(", ")}`);
+    console.error(`[POST] ❌ Không tìm thấy session: ${sessionId}. Hiện có: ${Array.from(transports.keys()).join(", ")}`);
     return res.status(404).json({ error: "Session not found" });
   }
 
   try {
     await transport.handlePostMessage(req, res);
-    // console.error(`[POST] ✅ Đã xử lý message cho session: ${sessionId}`);
+    console.error("[POST] ✅ Đã xử lý xong message");
   } catch (error: any) {
-    console.error(`[POST] ❌ Lỗi xử lý message: ${error.message}`);
+    console.error(`[POST] ❌ Lỗi xử lý message: ${error.stack}`);
     if (!res.headersSent) {
       res.status(500).json({ error: error.message });
     }
