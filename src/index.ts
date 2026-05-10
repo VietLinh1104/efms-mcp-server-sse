@@ -41,11 +41,11 @@ const sseHandler = async (req: any, res: any) => {
   console.error(`[SSE] 📥 Request tới: ${req.path}`);
   console.error(`[SSE] 🔑 Authorization: ${authHeader ? "Đã gửi" : "Trống"}`);
 
-  if (!authHeader?.startsWith("Bearer ")) {
-    console.error("[SSE] ❌ Thiếu hoặc sai định dạng Token");
-    return res.status(401).json({
-      error: "Unauthorized",
-      message: "Vui lòng kết nối qua Claude và thực hiện xác thực OAuth."
+  if (!authHeader || !authHeader.startsWith("Bearer ")) {
+    console.error(`[SSE] ❌ Reject request thiếu token tại: ${req.path}`);
+    return res.status(401).json({ 
+      error: "Unauthorized", 
+      message: "Vui lòng kết nối qua Claude và thực hiện xác thực OAuth." 
     });
   }
 
@@ -103,6 +103,7 @@ const sseHandler = async (req: any, res: any) => {
 
 app.get("/", sseHandler);
 app.get("/sse", sseHandler);
+app.get("/mcp", sseHandler);
 
 app.post("/messages", async (req, res) => {
   const sessionId = req.query.sessionId as string;
