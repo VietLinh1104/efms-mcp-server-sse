@@ -84,10 +84,11 @@ const sseHandler = async (req: any, res: any) => {
       return res.status(500).json({ error: "Tool registration failed" });
     }
 
-    // Xác định URL tuyệt đối cho messages endpoint
+    // Xác định URL tuyệt đối cho messages endpoint (Ưu tiên biến môi trường MCP_BASE_URL)
     const protocol = req.headers["x-forwarded-proto"] || req.protocol;
     const host = req.get("host");
-    const fullMessagesUrl = `${protocol}://${host}/messages`;
+    const mcpBase = process.env.MCP_BASE_URL || `${protocol}://${host}`;
+    const fullMessagesUrl = `${mcpBase}${mcpBase.endsWith("/") ? "" : "/"}messages`;
 
     console.error(`[SSE] 🔗 Messages URL: ${fullMessagesUrl}`);
 
