@@ -37,21 +37,21 @@ const transports = new Map<string, SSEServerTransport>();
 
 const sseHandler = async (req: any, res: any) => {
   const authHeader = req.headers.authorization;
-  
+
   console.error(`[SSE] 📥 Request tới: ${req.path}`);
   console.error(`[SSE] 🔑 Authorization: ${authHeader ? "Đã gửi" : "Trống"}`);
 
   if (!authHeader?.startsWith("Bearer ")) {
     console.error("[SSE] ❌ Thiếu hoặc sai định dạng Token");
-    return res.status(401).json({ 
-      error: "Unauthorized", 
-      message: "Vui lòng kết nối qua Claude và thực hiện xác thực OAuth." 
+    return res.status(401).json({
+      error: "Unauthorized",
+      message: "Vui lòng kết nối qua Claude và thực hiện xác thực OAuth."
     });
   }
 
   const token = authHeader.slice(7);
   const identityUrl = `${process.env.EFMS_BASE_URL || "http://localhost:8080"}/api/identity/auth/me`;
-  
+
   console.error(`[SSE] 🔍 Đang xác thực token tại: ${identityUrl}`);
 
   try {
@@ -72,8 +72,15 @@ const sseHandler = async (req: any, res: any) => {
       companyId: user.companyId
     });
 
-    // Post message endpoint vẫn là /messages
-    const transport = new SSEServerTransport("/messages", res);
+    // Xác định URL tuyệt đối cho messages endpoint
+    const protocol = req.headers["x-forwarded-proto"] || req.protocol;
+    const host = req.get("host");
+    const fullMessagesUrl = `${protocol}://${host}/messages`;
+
+    console.error(`[SSE] 🔗 Messages URL: ${fullMessagesUrl}`);
+
+    // Sử dụng URL tuyệt đối để Claude luôn gửi đúng chỗ
+    const transport = new SSEServerTransport(fullMessagesUrl as any, res);
     const sessionId = transport.sessionId;
     transports.set(sessionId, transport);
 
