@@ -99,13 +99,24 @@ app.get("/sse", sseHandler);
 
 app.post("/messages", async (req, res) => {
   const sessionId = req.query.sessionId as string;
+  console.error(`[POST] 📩 Nhận message cho session: ${sessionId}`);
+
   const transport = transports.get(sessionId);
 
   if (!transport) {
+    console.error(`[POST] ❌ Không tìm thấy session: ${sessionId}. Hiện có các session: ${Array.from(transports.keys()).join(", ")}`);
     return res.status(404).json({ error: "Session not found" });
   }
 
-  await transport.handlePostMessage(req, res);
+  try {
+    await transport.handlePostMessage(req, res);
+    // console.error(`[POST] ✅ Đã xử lý message cho session: ${sessionId}`);
+  } catch (error: any) {
+    console.error(`[POST] ❌ Lỗi xử lý message: ${error.message}`);
+    if (!res.headersSent) {
+      res.status(500).json({ error: error.message });
+    }
+  }
 });
 
 const port = process.env.PORT || 3000;
