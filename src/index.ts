@@ -1,11 +1,10 @@
-// Redirect all stdout to stderr to avoid breaking MCP protocol if run via stdio
 console.log = console.error;
 
 import express from "express";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
-import { SSEServerTransport } from "@modelcontextprotocol/sdk/server/sse.js";
+import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
 import { registerAllTools } from "./tools/index.js";
-import type { McpContext } from "./tools/efms.js";
+import { randomUUID } from "crypto";
 import axios from "axios";
 import dotenv from "dotenv";
 import cors from "cors";
@@ -16,11 +15,8 @@ const app = express();
 app.use(cors());
 app.use(express.json());
 
-// Metadata OAuth cho MCP Client
 app.get("/.well-known/oauth-authorization-server", (req, res) => {
   const baseUrl = process.env.EFMS_BASE_URL || "http://localhost:8080";
-  const authUrl = process.env.EFMS_AUTH_URL || "http://localhost:5173/login";
-
   res.json({
     issuer: baseUrl,
     authorization_endpoint: `${baseUrl}/api/identity/oauth/authorize`,
@@ -32,132 +28,62 @@ app.get("/.well-known/oauth-authorization-server", (req, res) => {
   });
 });
 
-// Lưu trữ các transport theo session để handle message POST
-const transports = new Map<string, SSEServerTransport>();
+app.get("/mcp", (req, res) => {
+  res.status(200).json({ name: "efms-mcp-server", version: "1.0.0" });
+});
 
-const sseHandler = async (req: any, res: any) => {
+app.post("/mcp", async (req, res) => {
   const authHeader = req.headers.authorization;
+  console.error(`[MCP] 📥 POST /mcp`);
+  console.error(`[MCP] 🔑 Authorization: ${authHeader ? "Đã gửi" : "Trống"}`);
 
-  console.error(`[SSE] 📥 Request tới: ${req.path}`);
-  console.error(`[SSE] 🔑 Authorization: ${authHeader ? "Đã gửi" : "Trống"}`);
-
-  if (!authHeader || !authHeader.startsWith("Bearer ")) {
-    console.error(`[SSE] ❌ Reject request thiếu token tại: ${req.path}`);
-    return res.status(401).json({
-      error: "Unauthorized",
-      message: "Vui lòng kết nối qua Claude và thực hiện xác thực OAuth."
-    });
+  if (!authHeader?.startsWith("Bearer ")) {
+    console.error(`[MCP] ❌ Thiếu token`);
+    return res.status(401).json({ error: "Unauthorized" });
   }
 
   const token = authHeader.slice(7);
-  const identityUrl = `${process.env.EFMS_BASE_URL || "http://localhost:8080"}/api/identity/auth/me`;
-
-  console.error(`[SSE] 🔍 Đang xác thực token tại: ${identityUrl}`);
 
   try {
-    const identityRes = await axios.get(identityUrl, {
-      headers: { Authorization: `Bearer ${token}` }
-    });
+    const identityRes = await axios.get(
+      `${process.env.EFMS_BASE_URL}/api/identity/auth/me`,
+      { headers: { Authorization: `Bearer ${token}` } }
+    );
 
-    console.error(`[SSE] 👤 Identity Response: ${JSON.stringify(identityRes.data)}`);
     const user = identityRes.data.data;
+    console.error(`[MCP] 👤 User: ${user?.email}, companyId: ${user?.companyId}`);
 
-    if (!user || !user.companyId) {
-      console.error("[SSE] ❌ Lỗi: Không tìm thấy thông tin user hoặc companyId");
-      return res.status(400).json({ error: "Missing user info or companyId" });
+    if (!user?.companyId) {
+      console.error(`[MCP] ❌ Thiếu companyId`);
+      return res.status(400).json({ error: "Missing companyId" });
     }
 
-    const server = new McpServer({
-      name: "efms-mcp-server",
-      version: "1.0.0",
+    const server = new McpServer({ name: "efms-mcp-server", version: "1.0.0" });
+
+    console.error(`[MCP] 🔧 Đang register tools...`);
+    registerAllTools(server, { token, companyId: user.companyId });
+    console.error(`[MCP] ✅ Register tools thành công`);
+
+    const transport = new StreamableHTTPServerTransport({
+      sessionIdGenerator: () => randomUUID()
     });
 
-    console.error("[SSE] 🔧 Đang register tools...");
-    try {
-      registerAllTools(server, {
-        token,
-        companyId: user.companyId
-      });
-      console.error("[SSE] ✅ Register tools thành công");
-    } catch (toolError: any) {
-      console.error(`[SSE] ❌ Lỗi register tools: ${toolError.stack}`);
-      return res.status(500).json({ error: "Tool registration failed" });
+    await (server as any).connect(transport);
+    await transport.handleRequest(req, res, req.body);
+    console.error(`[MCP] ✅ Request handled`);
+
+  } catch (err: any) {
+    console.error(`[MCP] ❌ Lỗi: ${err.message}`);
+    if (err.response) {
+      console.error(`[MCP] Chi tiết: ${JSON.stringify(err.response.data)}`);
     }
-
-    // Xác định URL tuyệt đối cho messages endpoint (Ưu tiên biến môi trường MCP_BASE_URL)
-    const protocol = req.headers["x-forwarded-proto"] || req.protocol;
-    const host = req.get("host");
-    const mcpBase = process.env.MCP_BASE_URL || `${protocol}://${host}`;
-    const fullMessagesUrl = `${mcpBase}${mcpBase.endsWith("/") ? "" : "/"}messages`;
-
-    console.error(`[SSE] 🔗 Messages URL: ${fullMessagesUrl}`);
-
-    // Sử dụng URL tuyệt đối để Claude luôn gửi đúng chỗ
-    const transport = new SSEServerTransport(fullMessagesUrl as any, res);
-
-    // Monkey-patch để log dữ liệu SSE gửi đi và ép xung URL tuyệt đối
-    const originalWrite = res.write.bind(res);
-    res.write = (chunk: any, ...args: any[]) => {
-      let data = chunk?.toString?.() || "";
-      
-      // Ép xung URL tuyệt đối nếu SDK tự ý dùng relative path
-      if (data.includes("event: endpoint") && data.includes("data: /messages")) {
-        data = data.replace("data: /messages", `data: ${fullMessagesUrl}`);
-        console.error(`[SSE] 🛠️  Đã ép xung URL tuyệt đối: ${fullMessagesUrl}`);
-      }
-
-      console.error(`[SSE] 📤 Sending: ${data.slice(0, 500)}`);
-      return originalWrite(data, ...args);
-    };
-
-    const sessionId = transport.sessionId;
-    transports.set(sessionId, transport);
-
-    console.error(`[SSE] 🚀 Đã tạo session: ${sessionId}`);
-    await server.connect(transport);
-
-    res.on("close", () => {
-      console.error(`[SSE] 🔌 Đã đóng session: ${sessionId}`);
-      transports.delete(sessionId);
-    });
-
-  } catch (error: any) {
-    console.error(`[SSE] ❌ Lỗi kết nối: ${error.message}`);
-    if (error.response) {
-      console.error(`[SSE] Chi tiết lỗi API: ${JSON.stringify(error.response.data)}`);
-    }
-    return res.status(401).json({ error: "Unauthorized / Connection failed" });
-  }
-};
-
-app.get("/", sseHandler);
-app.get("/sse", sseHandler);
-app.get("/mcp", sseHandler);
-
-app.post("/messages", async (req, res) => {
-  const sessionId = req.query.sessionId as string;
-  console.error(`[POST] 📩 Session: ${sessionId}`);
-  console.error(`[POST] 📦 Body: ${JSON.stringify(req.body)}`);
-
-  const transport = transports.get(sessionId);
-
-  if (!transport) {
-    console.error(`[POST] ❌ Không tìm thấy session: ${sessionId}. Hiện có: ${Array.from(transports.keys()).join(", ")}`);
-    return res.status(404).json({ error: "Session not found" });
-  }
-
-  try {
-    await transport.handlePostMessage(req, res);
-    console.error("[POST] ✅ Đã xử lý xong message");
-  } catch (error: any) {
-    console.error(`[POST] ❌ Lỗi xử lý message: ${error.stack}`);
     if (!res.headersSent) {
-      res.status(500).json({ error: error.message });
+      res.status(500).json({ error: err.message });
     }
   }
 });
 
 const port = process.env.PORT || 3000;
 app.listen(port, () => {
-  console.error(`EFMS MCP Server (HTTP/SSE) running on port ${port}`);
+  console.error(`EFMS MCP Server running on port ${port}`);
 });
