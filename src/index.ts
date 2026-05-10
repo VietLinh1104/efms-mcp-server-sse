@@ -49,13 +49,17 @@ app.get("/sse", async (req, res) => {
   }
 
   const token = authHeader.slice(7);
+  const identityUrl = `${process.env.EFMS_BASE_URL || "http://localhost:8080"}/api/identity/auth/me`;
+
+  console.error(`[SSE] 🔍 Đang xác thực token tại: ${identityUrl}`);
 
   try {
     // Xác thực token với Identity Service
-    const identityRes = await axios.get(`${process.env.EFMS_BASE_URL}/api/identity/auth/me`, {
+    const identityRes = await axios.get(identityUrl, {
       headers: { Authorization: `Bearer ${token}` }
     });
 
+    console.error("[SSE] ✅ Xác thực thành công");
     const user = identityRes.data.data;
 
     // Mỗi user/session có một McpServer instance riêng để đảm bảo bảo mật
@@ -69,20 +73,27 @@ app.get("/sse", async (req, res) => {
       companyId: user.companyId
     });
 
+    // Quan trọng: Sử dụng đường dẫn tương đối bắt đầu bằng '/'
     const transport = new SSEServerTransport("/messages", res);
     const sessionId = transport.sessionId;
     transports.set(sessionId, transport);
+
+    console.error(`[SSE] 🚀 Đã tạo session: ${sessionId}`);
 
     await server.connect(transport);
 
     // Dọn dẹp khi kết nối đóng
     res.on("close", () => {
+      console.error(`[SSE] 🔌 Đã đóng session: ${sessionId}`);
       transports.delete(sessionId);
     });
 
   } catch (error: any) {
-    console.error("Auth failed:", error.message);
-    return res.status(401).json({ error: "Invalid token" });
+    console.error(`[SSE] ❌ Lỗi kết nối: ${error.message}`);
+    if (error.response) {
+      console.error(`[SSE] Chi tiết lỗi API: ${JSON.stringify(error.response.data)}`);
+    }
+    return res.status(401).json({ error: "Unauthorized / Connection failed" });
   }
 });
 
