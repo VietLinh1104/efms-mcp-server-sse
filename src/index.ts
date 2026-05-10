@@ -1,3 +1,6 @@
+// Redirect all stdout to stderr to avoid breaking MCP protocol if run via stdio
+console.log = console.error;
+
 import express from "express";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { SSEServerTransport } from "@modelcontextprotocol/sdk/server/sse.js";
@@ -13,12 +16,17 @@ const port = process.env.PORT || 3000;
 
 // Metadata OAuth cho MCP Client
 app.get("/.well-known/oauth-authorization-server", (req, res) => {
+  const baseUrl = process.env.EFMS_BASE_URL || "http://localhost:8080";
+  const authUrl = process.env.EFMS_AUTH_URL || "http://localhost:5173/login";
+
   res.json({
-    issuer: process.env.EFMS_BASE_URL,
-    authorization_endpoint: process.env.EFMS_AUTH_URL,
-    token_endpoint: `${process.env.EFMS_BASE_URL}/api/identity/oauth/token`,
+    issuer: baseUrl,
+    authorization_endpoint: `${baseUrl}/api/identity/oauth/authorize`,
+    token_endpoint: `${baseUrl}/api/identity/oauth/token`,
     response_types_supported: ["code"],
     grant_types_supported: ["authorization_code", "refresh_token"],
+    code_challenge_methods_supported: ["S256"],
+    scopes_supported: ["openid", "profile", "email"]
   });
 });
 
@@ -38,7 +46,7 @@ app.get("/sse", async (req, res) => {
   }
 
   const token = authHeader.slice(7);
-  
+
   try {
     // Xác thực token với Identity Service
     const identityRes = await axios.get(`${process.env.EFMS_BASE_URL}/api/identity/auth/me`, {
@@ -46,16 +54,16 @@ app.get("/sse", async (req, res) => {
     });
 
     const user = identityRes.data.data;
-    
+
     // Mỗi user/session có một McpServer instance riêng để đảm bảo bảo mật
     const server = new McpServer({
       name: "efms-mcp-server",
       version: "1.0.0",
     });
 
-    registerAllTools(server, { 
-      token, 
-      companyId: user.companyId 
+    registerAllTools(server, {
+      token,
+      companyId: user.companyId
     });
 
     const transport = new SSEServerTransport("/messages", res);
