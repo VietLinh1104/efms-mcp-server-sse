@@ -95,11 +95,19 @@ const sseHandler = async (req: any, res: any) => {
     // Sử dụng URL tuyệt đối để Claude luôn gửi đúng chỗ
     const transport = new SSEServerTransport(fullMessagesUrl as any, res);
 
-    // Monkey-patch để log dữ liệu SSE gửi đi
+    // Monkey-patch để log dữ liệu SSE gửi đi và ép xung URL tuyệt đối
     const originalWrite = res.write.bind(res);
     res.write = (chunk: any, ...args: any[]) => {
-      console.error(`[SSE] 📤 Sending: ${chunk?.toString?.()?.slice(0, 500)}`);
-      return originalWrite(chunk, ...args);
+      let data = chunk?.toString?.() || "";
+      
+      // Ép xung URL tuyệt đối nếu SDK tự ý dùng relative path
+      if (data.includes("event: endpoint") && data.includes("data: /messages")) {
+        data = data.replace("data: /messages", `data: ${fullMessagesUrl}`);
+        console.error(`[SSE] 🛠️  Đã ép xung URL tuyệt đối: ${fullMessagesUrl}`);
+      }
+
+      console.error(`[SSE] 📤 Sending: ${data.slice(0, 500)}`);
+      return originalWrite(data, ...args);
     };
 
     const sessionId = transport.sessionId;
