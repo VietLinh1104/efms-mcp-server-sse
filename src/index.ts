@@ -35,26 +35,26 @@ app.get("/.well-known/oauth-authorization-server", (req, res) => {
 // Lưu trữ các transport theo session để handle message POST
 const transports = new Map<string, SSEServerTransport>();
 
-app.get("/sse", async (req, res) => {
-  console.error("[SSE] New connection attempt");
+const sseHandler = async (req: any, res: any) => {
   const authHeader = req.headers.authorization;
+  
+  console.error(`[SSE] 📥 Request tới: ${req.path}`);
+  console.error(`[SSE] 🔑 Authorization: ${authHeader ? "Đã gửi" : "Trống"}`);
 
   if (!authHeader?.startsWith("Bearer ")) {
-    res.setHeader(
-      "WWW-Authenticate",
-      `Bearer realm="efms", error="unauthorized", ` +
-      `authorization_uri="${process.env.EFMS_AUTH_URL}"`
-    );
-    return res.status(401).json({ error: "Unauthorized" });
+    console.error("[SSE] ❌ Thiếu hoặc sai định dạng Token");
+    return res.status(401).json({ 
+      error: "Unauthorized", 
+      message: "Vui lòng kết nối qua Claude và thực hiện xác thực OAuth." 
+    });
   }
 
   const token = authHeader.slice(7);
   const identityUrl = `${process.env.EFMS_BASE_URL || "http://localhost:8080"}/api/identity/auth/me`;
-
+  
   console.error(`[SSE] 🔍 Đang xác thực token tại: ${identityUrl}`);
 
   try {
-    // Xác thực token với Identity Service
     const identityRes = await axios.get(identityUrl, {
       headers: { Authorization: `Bearer ${token}` }
     });
@@ -62,7 +62,6 @@ app.get("/sse", async (req, res) => {
     console.error("[SSE] ✅ Xác thực thành công");
     const user = identityRes.data.data;
 
-    // Mỗi user/session có một McpServer instance riêng để đảm bảo bảo mật
     const server = new McpServer({
       name: "efms-mcp-server",
       version: "1.0.0",
@@ -73,16 +72,14 @@ app.get("/sse", async (req, res) => {
       companyId: user.companyId
     });
 
-    // Quan trọng: Sử dụng đường dẫn tương đối bắt đầu bằng '/'
+    // Post message endpoint vẫn là /messages
     const transport = new SSEServerTransport("/messages", res);
     const sessionId = transport.sessionId;
     transports.set(sessionId, transport);
 
     console.error(`[SSE] 🚀 Đã tạo session: ${sessionId}`);
-
     await server.connect(transport);
 
-    // Dọn dẹp khi kết nối đóng
     res.on("close", () => {
       console.error(`[SSE] 🔌 Đã đóng session: ${sessionId}`);
       transports.delete(sessionId);
@@ -95,7 +92,10 @@ app.get("/sse", async (req, res) => {
     }
     return res.status(401).json({ error: "Unauthorized / Connection failed" });
   }
-});
+};
+
+app.get("/", sseHandler);
+app.get("/sse", sseHandler);
 
 app.post("/messages", async (req, res) => {
   const sessionId = req.query.sessionId as string;
