@@ -1,6 +1,6 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
-import { registerEfmsTools } from "./efms.js";
+import { registerEfmsTools, type McpContext } from "./efms.js";
 
-export function registerAllTools(server: McpServer) {
-  registerEfmsTools(server);
+export function registerAllTools(server: McpServer, ctx: McpContext) {
+  registerEfmsTools(server, ctx);
 }

@@ -1,18 +1,18 @@
 import axios from "axios";
-import { tokenManager } from "../auth/tokenManager.js";
 
-export const efmsClient = axios.create({
-  baseURL: process.env.EFMS_BASE_URL || "",
-  timeout: 15_000,
-});
+export const createEfmsClient = (token: string, companyId?: string) => {
+  const client = axios.create({
+    baseURL: process.env.EFMS_BASE_URL || "",
+    timeout: 15_000,
+  });
 
-efmsClient.interceptors.request.use(async (config) => {
-  const auth = await tokenManager.getAuth();
-  config.headers.Authorization = `Bearer ${auth.token}`;
-  
-  if (auth.companyId) {
-    config.headers["X-Company-Id"] = auth.companyId;
-  }
+  client.interceptors.request.use((config) => {
+    config.headers.Authorization = `Bearer ${token}`;
+    if (companyId) {
+      config.headers["X-Company-Id"] = companyId;
+    }
+    return config;
+  });
 
-  return config;
-});
+  return client;
+};

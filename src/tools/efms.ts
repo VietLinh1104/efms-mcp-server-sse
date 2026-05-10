@@ -1,7 +1,6 @@
-import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
+import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
-import { efmsClient } from "../client/efmsClient.js";
-import { tokenManager } from "../auth/tokenManager.js";
+import { createEfmsClient } from "../client/efmsClient.js";
 import fs from "fs";
 
 const LOG_FILE = "/tmp/efms-mcp.log";
@@ -9,7 +8,14 @@ function log(msg: string) {
   fs.appendFileSync(LOG_FILE, `[${new Date().toISOString()}] ${msg}\n`);
 }
 
-export function registerEfmsTools(server: McpServer) {
+export interface McpContext {
+  token: string;
+  companyId?: string;
+}
+
+export function registerEfmsTools(server: McpServer, ctx: McpContext) {
+  const client = createEfmsClient(ctx.token, ctx.companyId);
+
   const handleError = (error: any) => {
     log(`ERROR: ${error.message} | Status: ${error.response?.status} | URL: ${error.config?.url}`);
     return {
@@ -39,9 +45,8 @@ export function registerEfmsTools(server: McpServer) {
     },
     async (params) => {
       try {
-        const auth = await tokenManager.getAuth();
-        const response = await efmsClient.get("/api/core/v1/invoices", { 
-          params: { ...params, companyId: auth.companyId } 
+        const response = await client.get("/api/core/v1/invoices", { 
+          params: { ...params, companyId: ctx.companyId } 
         });
         return {
           content: [{ type: "text" as const, text: JSON.stringify(response.data.data, null, 2) }],
@@ -58,7 +63,7 @@ export function registerEfmsTools(server: McpServer) {
     { id: z.string() },
     async ({ id }) => {
       try {
-        const response = await efmsClient.get(`/api/core/v1/invoices/${id}`);
+        const response = await client.get(`/api/core/v1/invoices/${id}`);
         return {
           content: [{ type: "text" as const, text: JSON.stringify(response.data.data, null, 2) }],
         };
@@ -79,9 +84,8 @@ export function registerEfmsTools(server: McpServer) {
     },
     async (params) => {
       try {
-        const auth = await tokenManager.getAuth();
-        const response = await efmsClient.get("/api/core/v1/partners", { 
-          params: { ...params, companyId: auth.companyId } 
+        const response = await client.get("/api/core/v1/partners", { 
+          params: { ...params, companyId: ctx.companyId } 
         });
         return {
           content: [{ type: "text" as const, text: JSON.stringify(response.data.data, null, 2) }],
@@ -101,24 +105,13 @@ export function registerEfmsTools(server: McpServer) {
     },
     async (params) => {
       try {
-        const response = await efmsClient.get("/api/core/v1/approval/tasks", { params });
+        const response = await client.get("/api/core/v1/approval/tasks", { params });
         return {
           content: [{ type: "text" as const, text: JSON.stringify(response.data.data, null, 2) }],
         };
       } catch (error: any) {
         return handleError(error);
       }
-    }
-  );
-  server.tool(
-    "logout",
-    "Đăng xuất tài khoản EFMS",
-    {},
-    async () => {
-      tokenManager.logout();
-      return {
-        content: [{ type: "text" as const, text: "Đã đăng xuất thành công. Phiên làm việc đã được xóa." }],
-      };
     }
   );
 }
