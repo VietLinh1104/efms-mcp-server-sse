@@ -4,7 +4,6 @@ import express from "express";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
 import { registerAllTools } from "./tools/index.js";
-import { randomUUID } from "crypto";
 import axios from "axios";
 import dotenv from "dotenv";
 import cors from "cors";
@@ -29,16 +28,14 @@ app.get("/.well-known/oauth-authorization-server", (req, res) => {
 });
 
 app.get("/mcp", (req, res) => {
-  res.status(200).json({ name: "efms-mcp-server", version: "1.0.0" });
+  res.json({ name: "efms-mcp-server", version: "1.0.0" });
 });
 
 app.post("/mcp", async (req, res) => {
   const authHeader = req.headers.authorization;
-  console.error(`[MCP] 📥 POST /mcp`);
-  console.error(`[MCP] 🔑 Authorization: ${authHeader ? "Đã gửi" : "Trống"}`);
 
   if (!authHeader?.startsWith("Bearer ")) {
-    console.error(`[MCP] ❌ Thiếu token`);
+    console.error("[MCP] ❌ Thiếu token");
     return res.status(401).json({ error: "Unauthorized" });
   }
 
@@ -51,37 +48,31 @@ app.post("/mcp", async (req, res) => {
     );
 
     const user = identityRes.data.data;
-    console.error(`[MCP] 👤 User: ${user?.email}, companyId: ${user?.companyId}`);
-
     if (!user?.companyId) {
-      console.error(`[MCP] ❌ Thiếu companyId`);
       return res.status(400).json({ error: "Missing companyId" });
     }
 
-    const server = new McpServer({ name: "efms-mcp-server", version: "1.0.0" });
+    console.error(`[MCP] 👤 ${user.email} | ${req.body?.method}`);
 
-    console.error(`[MCP] 🔧 Đang register tools...`);
+    const server = new McpServer({ name: "efms-mcp-server", version: "1.0.0" });
     registerAllTools(server, { token, companyId: user.companyId });
-    console.error(`[MCP] ✅ Register tools thành công`);
 
     const transport = new StreamableHTTPServerTransport({
-      sessionIdGenerator: () => randomUUID()
-    });
+      sessionIdGenerator: undefined,
+    } as any);
 
-    await (server as any).connect(transport);
+    await server.connect(transport as any);
     await transport.handleRequest(req, res, req.body);
-    console.error(`[MCP] ✅ Request handled`);
 
-  } catch (err: any) {
-    console.error(`[MCP] ❌ Lỗi: ${err.message}`);
-    if (err.response) {
-      console.error(`[MCP] Chi tiết: ${JSON.stringify(err.response.data)}`);
-    }
+  } catch (error: any) {
+    console.error(`[MCP] ❌ ${error.message}`);
     if (!res.headersSent) {
-      res.status(500).json({ error: err.message });
+      res.status(error.response?.status || 500).json({ error: error.message });
     }
   }
 });
+
+app.get("/", (req, res) => res.redirect("/mcp"));
 
 const port = process.env.PORT || 3000;
 app.listen(port, () => {
