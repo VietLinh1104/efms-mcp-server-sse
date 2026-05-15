@@ -3,3 +3,4 @@ dist/
 .env
 .efms-mcp/
 *.log
+.DS_Store

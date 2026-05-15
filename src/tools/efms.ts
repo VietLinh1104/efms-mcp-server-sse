@@ -105,7 +105,7 @@ export function registerEfmsTools(server: McpServer, ctx: McpContext) {
     },
     async (params) => {
       try {
-        const response = await client.get("/api/core/v1/approval/tasks", { params });
+        const response = await client.get("/api/core/v1/invoice-tasks/tasks", { params });
         return {
           content: [{ type: "text" as const, text: JSON.stringify(response.data.data, null, 2) }],
         };
