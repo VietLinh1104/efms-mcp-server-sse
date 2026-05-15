@@ -1,0 +1,23 @@
+version: '3.8'
+
+services:
+  efms-mcp-server:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: efms-mcp-server
+    ports:
+      - "3000:3000"
+    environment:
+      - PORT=${PORT:-3000}
+      - EFMS_AUTH_URL=${EFMS_AUTH_URL:-http://localhost:5173/login}
+      - EFMS_BASE_URL=${EFMS_BASE_URL:-http://efms-api-gateway:8080}
+      - EFMS_CALLBACK_PORT=${EFMS_CALLBACK_PORT:-3000}
+      - MCP_BASE_URL=${MCP_BASE_URL:-http://localhost:3000}
+    networks:
+      - efms-network
+
+networks:
+  efms-network:
+    external: true
+    name: efms-network
