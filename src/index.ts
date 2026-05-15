@@ -34,12 +34,12 @@ app.get("/mcp", (req, res) => {
 app.post("/mcp", async (req, res) => {
   const authHeader = req.headers.authorization;
 
-  if (!authHeader?.startsWith("Bearer ")) {
-    console.error("[MCP] ❌ Thiếu token");
+  if (!authHeader || !authHeader.toLowerCase().startsWith("bearer ")) {
+    console.error(`[MCP] ❌ Thiếu token từ IP: ${req.ip}. Headers:`, req.headers);
     return res.status(401).json({ error: "Unauthorized" });
   }
 
-  const token = authHeader.slice(7);
+  const token = authHeader.substring(7).trim();
 
   try {
     const identityRes = await axios.get(
