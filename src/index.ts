@@ -15,7 +15,7 @@ app.use(cors());
 app.use(express.json());
 
 app.get("/.well-known/oauth-authorization-server", (req, res) => {
-  const baseUrl = process.env.EFMS_BASE_URL || "http://localhost:8080";
+  const baseUrl = process.env.PUBLIC_EFMS_BASE_URL || "http://localhost:8080";
   res.json({
     issuer: baseUrl,
     authorization_endpoint: `${baseUrl}/api/identity/oauth/authorize`,
@@ -43,7 +43,7 @@ app.post("/mcp", async (req, res) => {
 
   try {
     const identityRes = await axios.get(
-      `${process.env.EFMS_BASE_URL}/api/identity/auth/me`,
+      `${process.env.PUBLIC_EFMS_BASE_URL}/api/identity/auth/me`,
       { headers: { Authorization: `Bearer ${token}` } }
     );
 

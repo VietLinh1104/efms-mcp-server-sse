@@ -10,8 +10,8 @@ services:
       - "3000:3000"
     environment:
       - PORT=${PORT:-3000}
-      - EFMS_BASE_URL=${EFMS_BASE_URL:-http://efms-api-gateway:8080}
-      - MCP_BASE_URL=${MCP_BASE_URL:-http://localhost:3000}
+      - PUBLIC_EFMS_BASE_URL=${PUBLIC_EFMS_BASE_URL:-http://efms-api-gateway:8080}
+      - PUBLIC_MCP_BASE_URL=${PUBLIC_MCP_BASE_URL:-http://localhost:3000}
     networks:
       - efms-network
 

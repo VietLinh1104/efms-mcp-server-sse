@@ -2,7 +2,7 @@ import axios from "axios";
 
 export const createEfmsClient = (token: string, companyId?: string) => {
   const client = axios.create({
-    baseURL: process.env.EFMS_BASE_URL || "",
+    baseURL: process.env.PUBLIC_EFMS_BASE_URL || "",
     timeout: 15_000,
   });
 
